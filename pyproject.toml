@@ -1,0 +1,29 @@
+[project]
+name = "wieland-email-responder"
+version = "0.6.0"
+description = "Standalone Python replacement for the Wieland Collective n8n email responder."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "openai>=2.0,<3",
+  "psycopg[binary]>=3.2,<4",
+  "python-dotenv>=1.0,<2",
+]
+
+[project.scripts]
+email-responder = "email_responder.app:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["email_responder"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff.lint]
+# Keep the checks focused on correctness, imports, and safe Python modernization.
+# Some compact-style rules are intentionally omitted for beginner readability.
+select = ["E", "F", "I", "UP"]

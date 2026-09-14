@@ -1,6 +1,6 @@
-# n8n + Wiki.js Docker Setup
+# Amelie's Agents
 
-This repository contains a simple Docker Compose setup for running `n8n`, `Wiki.js`, `Mathesar`, `Postgres`, and `Gotenberg` locally with Docker Desktop.
+This repository contains local automation tools and a Docker Compose setup for supporting services such as Wiki.js, Mathesar, Postgres, and Gotenberg. The automatic email responder is a standalone Python program and does not need n8n.
 
 ## Included Files
 
@@ -14,6 +14,9 @@ This repository contains a simple Docker Compose setup for running `n8n`, `Wiki.
 - `schema/01_wikijs.sh`: creates the Wiki.js database and enables its PostgreSQL extensions on first startup
 - `schema/02_kb_embeddings.sql`: creates the Wiki.js knowledge-base embedding tables
 - `schema/03_email_responder.sql`: creates the automatic email responder state and processed-message tables
+- `email_responder/`: standalone Python email responder
+- `tests/`: unit tests for the Python email responder
+- `pyproject.toml`: Python dependencies, package metadata, and the `email-responder` command
 - `schema/freelance.sql`: core tables for the freelance assistant database
 - `schema/job_search.sql`: expected `job_search` table definition for the report workflow
 - `n8n-data/`: host folder for n8n state and SQLite data
@@ -94,16 +97,85 @@ Get-Content .\schema\02_kb_embeddings.sql -Raw | docker exec -i postgres psql -U
 
 Import or refresh workflows from the tracked `workflows/` folder as needed. The Wiki.js embedding workflow is stored at `workflows/wikijs-embeddings-index.json`.
 
-The `automatic-email-responder` workflow is stored at `workflows/automatic-email-responder.json`. It reads new unread messages from `hello.wieland.collective@gmail.com` through Gmail IMAP, or accepts a manual test email from its `Manual Trigger` branch. It chunks the email body with the same chunking strategy as the Wiki.js embedding index, embeds each email chunk with OpenAI, scores those embeddings against `public.kb_chunks`, selects up to the configured top-K distinct Wiki.js pages, fetches those pages, asks GPT to draft a reply, sends the reply through Gmail SMTP, and then marks the original message as `replied` or `failed` in Postgres. If the knowledge base has fewer than K pages, the workflow uses every available page instead of failing.
+## Standalone Python email responder
 
-For manual end-to-end testing, run the workflow from the `Manual Trigger` node. The `Build manual test email` node creates a synthetic inbound email from `hello.wieland.collective+manual-test@gmail.com`, so the generated reply is sent back into the same Gmail mailbox instead of a real external contact.
+The email responder now runs as a normal Python program, without n8n. It reads new unread messages from `hello.wieland.collective@gmail.com` through Gmail IMAP. It chunks the email body with the same strategy as the Wiki.js embedding index, embeds each chunk with OpenAI, scores those embeddings against `public.kb_chunks`, selects up to the configured top-K distinct Wiki.js pages, fetches those pages, asks GPT to draft a reply, sends the reply through Gmail SMTP, and marks the original message as `replied` or `failed` in Postgres. If the knowledge base has fewer than K pages, the program uses every available page.
 
-The responder has three duplicate/old-mail guards:
+The old `workflows/automatic-email-responder.json` file remains as an inactive migration reference. Do not activate that workflow and the Python responder at the same time.
 
-- The IMAP trigger is configured for `UNSEEN` messages and `trackLastMessageId`.
+### Install and configure
+
+Python and uv must be installed on the host. Copy the example configuration, then fill in the three blank secrets:
+
+```bash
+cp .env.example .env
+uv sync
+```
+
+Required secrets in `.env`:
+
+- `GMAIL_APP_PASSWORD`: a Google App Password for the responder mailbox
+- `OPENAI_API_KEY`: the OpenAI project API key used for embeddings and reply drafts
+- `WIKIJS_API_TOKEN`: the Wiki.js API token, either with or without the `Bearer ` prefix
+
+The default URLs assume the Python program runs on the host and PostgreSQL and Wiki.js run through this repository's Docker Compose setup. Start those two services with:
+
+```bash
+docker compose up -d postgres wikijs
+```
+
+The program uses `gpt-5.4` for replies and `text-embedding-3-small` for retrieval by default, matching the old workflow. OpenAI response storage is disabled by default because prompts contain incoming customer email. All settings can be changed in `.env`.
+
+If the database was initialized before `schema/03_email_responder.sql` was added, apply it once:
+
+```bash
+docker exec -i postgres psql -U appuser -d freelance < schema/03_email_responder.sql
+```
+
+### Test safely
+
+Create a reply draft from the synthetic test email without claiming a database record or sending mail:
+
+```bash
+uv run email-responder --manual-test --draft-only
+```
+
+Send the synthetic test reply to the mailbox's `+manual-test` Gmail alias:
+
+```bash
+uv run email-responder --manual-test
+```
+
+### Run automatically
+
+Immediately before the first live run, reset the old-email cutoff. This prevents old unread mail from receiving replies:
+
+```bash
+uv run email-responder --reset-baseline
+```
+
+Check the inbox once:
+
+```bash
+uv run email-responder --once
+```
+
+Keep polling the inbox every 60 seconds:
+
+```bash
+uv run email-responder
+```
+
+Stop the program with `Ctrl+C`. Duplicate protection is stored in PostgreSQL, so restarting the program does not reply to the same message twice.
+
+For manual end-to-end testing, use the `--manual-test` option. It creates a synthetic inbound email from `hello.wieland.collective+manual-test@gmail.com`, so the generated reply is sent back into the same Gmail mailbox instead of a real external contact.
+
+The responder has four duplicate/old-mail guards:
+
+- The IMAP reader requests only `UNSEEN` messages and marks each handled message as read.
 - The normalizer skips messages sent by `hello.wieland.collective@gmail.com`, which avoids replying to the responder's own outbound mail.
-- The normalizer also blocks configured marketplace/newsletter senders before embeddings or GPT. Blocked messages are stored as `skipped_blocked`; edit `BLOCKED_SENDER_DOMAINS` and `BLOCKED_SENDER_KEYWORDS` in the `Normalize email` node to add or remove senders.
-- `public.email_responder_messages` has a unique `(mailbox, message_key)` constraint. The workflow must claim a message as `processing` before embeddings, GPT, or email sending can happen. After the SMTP send succeeds, the workflow updates the row to `replied`; if SMTP rejects the send, it updates the row to `failed` and stores the error in `last_error`.
+- The normalizer also blocks configured marketplace/newsletter senders before embeddings or GPT. Blocked messages are stored as `skipped_blocked`; edit `EMAIL_RESPONDER_BLOCKED_DOMAINS` and `EMAIL_RESPONDER_BLOCKED_KEYWORDS` in `.env` to add or remove senders.
+- `public.email_responder_messages` has a unique `(mailbox, message_key)` constraint. The program must claim a message as `processing` before embeddings, GPT, or email sending can happen. After the SMTP send succeeds, the program updates the row to `replied`; if SMTP rejects the send, it updates the row to `failed` and stores the error in `last_error`.
 
 `public.email_responder_state.respond_after` defines the old-email cutoff. Messages received before that timestamp are inserted as `skipped_old` and are not answered. Reset this baseline immediately before activating the responder if you want to guarantee that only messages received after activation can be answered:
 
@@ -111,13 +183,7 @@ The responder has three duplicate/old-mail guards:
 docker exec postgres psql -U appuser -d freelance -c "UPDATE public.email_responder_state SET respond_after = now(), updated_at = now() WHERE mailbox = 'hello.wieland.collective@gmail.com';"
 ```
 
-The responder expects these n8n credentials:
-
-- `Gmail hello.wieland.collective IMAP`: IMAP, host `imap.gmail.com`, port `993`, SSL/TLS enabled, user `hello.wieland.collective@gmail.com`
-- `Gmail hello.wieland.collective SMTP`: SMTP, host `smtp.gmail.com`, port `465`, SSL/TLS enabled, user `hello.wieland.collective@gmail.com`
-- Existing `OpenAi account`, `Postgres account`, and `Wiki.js API token`
-
-Use a Google App Password for the Gmail IMAP/SMTP credentials, not the normal Google account password. Store the App Password only in n8n credentials; do not put it in workflow JSON or Git.
+Use a Google App Password for Gmail IMAP/SMTP, not the normal Google account password. Store it only in the ignored `.env` file; do not put it in Python code or Git.
 
 Telemetry diagnostics and version-check notifications are disabled for `n8n`.
 
