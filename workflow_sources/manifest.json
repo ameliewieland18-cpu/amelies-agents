@@ -1,0 +1,140 @@
+[
+  {
+    "workflow": "automatic-email-responder.json",
+    "nodes": [
+      {
+        "name": "Build manual test email",
+        "parameter": "jsCode",
+        "sources": [
+          "email_responder/build_manual_test_email.js"
+        ]
+      },
+      {
+        "name": "Normalize email",
+        "parameter": "jsCode",
+        "sources": [
+          "common/hash.js",
+          "common/payload.js",
+          "email_responder/email_text.js",
+          "email_responder/email_fields.js",
+          "email_responder/sender_rules.js",
+          "email_responder/normalized_email.js",
+          "email_responder/normalize_email.js"
+        ]
+      },
+      {
+        "name": "Claim new email",
+        "parameter": "query",
+        "sources": [
+          "email_responder/claim_new_email.sql"
+        ]
+      },
+      {
+        "name": "Continue only if claimed",
+        "parameter": "jsCode",
+        "sources": [
+          "common/payload.js",
+          "email_responder/continue_only_if_claimed.js"
+        ]
+      },
+      {
+        "name": "Prepare email chunks",
+        "parameter": "jsCode",
+        "sources": [
+          "common/index_text.js",
+          "common/chunking.js",
+          "email_responder/prepare_email_chunks.js"
+        ]
+      },
+      {
+        "name": "Score KB pages",
+        "parameter": "query",
+        "sources": [
+          "email_responder/score_kb_pages.sql"
+        ]
+      },
+      {
+        "name": "Rank top K pages",
+        "parameter": "jsCode",
+        "sources": [
+          "common/payload.js",
+          "email_responder/page_ranking.js",
+          "email_responder/rank_top_k_pages.js"
+        ]
+      },
+      {
+        "name": "Build reply prompt",
+        "parameter": "jsCode",
+        "sources": [
+          "common/index_text.js",
+          "common/wiki_responses.js",
+          "email_responder/wiki_context.js",
+          "email_responder/prompt_text.js",
+          "email_responder/build_reply_prompt.js"
+        ]
+      },
+      {
+        "name": "Prepare email reply",
+        "parameter": "jsCode",
+        "sources": [
+          "email_responder/openai_response.js",
+          "email_responder/prepare_email_reply.js"
+        ]
+      },
+      {
+        "name": "Mark email send outcome",
+        "parameter": "query",
+        "sources": [
+          "email_responder/mark_email_send_outcome.sql"
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "job-search-nice-1.json",
+    "nodes": [
+      {
+        "name": "Build report document",
+        "parameter": "jsCode",
+        "sources": [
+          "job_report/formatting.js",
+          "job_report/markdown.js",
+          "job_report/html.js",
+          "job_report/build_report_document.js"
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "wikijs-embeddings-index.json",
+    "nodes": [
+      {
+        "name": "Extract page list",
+        "parameter": "jsCode",
+        "sources": [
+          "common/wiki_responses.js",
+          "wiki_index/extract_page_list.js"
+        ]
+      },
+      {
+        "name": "Prepare chunks",
+        "parameter": "jsCode",
+        "sources": [
+          "common/wiki_responses.js",
+          "common/index_text.js",
+          "common/hash.js",
+          "common/chunking.js",
+          "wiki_index/chunk_records.js",
+          "wiki_index/prepare_chunks.js"
+        ]
+      },
+      {
+        "name": "Store chunk embedding",
+        "parameter": "query",
+        "sources": [
+          "wiki_index/store_chunk_embedding.sql"
+        ]
+      }
+    ]
+  }
+]

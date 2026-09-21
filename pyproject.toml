@@ -1,6 +1,6 @@
 [project]
 name = "wieland-email-responder"
-version = "0.6.0"
+version = "0.6.1"
 description = "Standalone Python replacement for the Wieland Collective n8n email responder."
 readme = "README.md"
 requires-python = ">=3.11"

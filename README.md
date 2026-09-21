@@ -2,6 +2,37 @@
 
 This repository contains local automation tools and a Docker Compose setup for supporting services such as Wiki.js, Mathesar, Postgres, and Gotenberg. The automatic email responder is a standalone Python program and does not need n8n.
 
+## Reading and changing the code
+
+Start with the [code reading guide](docs/reading-the-code.md). It introduces the
+project one file at a time, beginning with the main workflow and following its
+building blocks down to service-specific details.
+
+The Python responder starts in [`email_responder/app.py`](email_responder/app.py).
+The story for one email is in
+[`email_responder/responder.py`](email_responder/responder.py): claim the email,
+create a draft, send it, and record the result. Gmail protocols, SQL, and API
+response unpacking live in dedicated modules below that workflow.
+
+The n8n scripts are readable source files in [`workflow_sources/`](workflow_sources/README.md).
+After editing them, rebuild the self-contained workflow JSON files:
+
+```bash
+python scripts/build_workflows.py
+```
+
+Run the offline checks before committing (Node.js is needed for the workflow tests):
+
+```bash
+uv run python -m unittest discover -s tests -v
+node --test tests/workflows/*.test.cjs
+python scripts/build_workflows.py --check
+uvx ruff check email_responder tests scripts
+uvx ruff format --check email_responder tests scripts
+```
+
+The tests use fake services and do not send email, use API credits, or change a database.
+
 ## Included Files
 
 - `compose.yaml`: runs `n8n`, `Wiki.js`, `Mathesar`, `Postgres`, and `Gotenberg`
@@ -10,6 +41,8 @@ This repository contains local automation tools and a Docker Compose setup for s
 - `local-files/`: host folder mounted into the container at `/files`
 - `local-files/reports/`: host folder where generated Markdown and PDF reports are written
 - `workflows/`: tracked host folder mounted into the container at `/workflows`
+- `workflow_sources/`: readable JavaScript and SQL sources for the n8n exports
+- `scripts/build_workflows.py`: bundles those sources into the importable exports
 - `schema/00_pgvector.sql`: enables the `pgvector` extension in the app database
 - `schema/01_wikijs.sh`: creates the Wiki.js database and enables its PostgreSQL extensions on first startup
 - `schema/02_kb_embeddings.sql`: creates the Wiki.js knowledge-base embedding tables

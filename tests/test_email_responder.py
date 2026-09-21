@@ -4,16 +4,13 @@ import unittest
 from email import policy
 from email.parser import BytesParser
 
-from email_responder.app import (
-    RankedPage,
-    Settings,
-    blocked_sender_reason,
-    build_reply_prompt,
-    chunk_text,
-    normalize_message,
-    normalize_text,
-    workflow_hash,
-)
+from email_responder.config import Settings
+from email_responder.mail.filtering import blocked_sender_reason
+from email_responder.mail.identity import workflow_hash
+from email_responder.mail.normalize import normalize_message
+from email_responder.models import RankedPage
+from email_responder.prompt import build_reply_prompt
+from email_responder.text import chunk_text, normalize_text
 
 
 # Example: tests = EmailResponderTests()
